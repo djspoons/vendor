@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -71,6 +72,43 @@ func main() {
 
 	flag.Parse()
 	vendor(flag.Args(), true)
+	reportExtVendoredDep()
+}
+
+var extVendoredDeps map[string]bool
+
+func noteExtVendoredDep(p *Package) {
+	i := strings.LastIndex(p.ImportPath, "/vendor/")
+	if i < 0 {
+		panic("asked to note ext vendored dep without /vendor/ " + p.ImportPath)
+	}
+	path := p.ImportPath[i+len("/vendor/"):]
+
+	if extVendoredDeps == nil {
+		extVendoredDeps = make(map[string]bool)
+	}
+	if extVendoredDeps[path] {
+		return
+	}
+	extVendoredDeps[path] = true
+}
+
+func reportExtVendoredDep() {
+	printedHeader := false
+	for k, _ := range extVendoredDeps {
+		_, err := os.Stat(filepath.Join(getwd(), "vendor", k))
+		if err != nil {
+			if os.IsNotExist(err) {
+				if !printedHeader {
+					fmt.Fprintf(os.Stderr, "vendor-vendor report:\n")
+					printedHeader = true
+				}
+				fmt.Println(k)
+				continue
+			}
+			log.Fatal(err)
+		}
+	}
 }
 
 func vendor(names []string, andDeps bool) {
@@ -88,8 +126,7 @@ func vendor(names []string, andDeps bool) {
 		}
 		if isVendored(p) {
 			if !isLocal(p) {
-				// This is vendored in an external dep; report and skip
-				// add to report; skip
+				noteExtVendoredDep(p)
 			}
 			continue
 		}
