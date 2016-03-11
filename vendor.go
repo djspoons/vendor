@@ -70,8 +70,11 @@ func main() {
 	log.SetPrefix("vendor: ")
 
 	flag.Parse()
+	vendor(flag.Args(), true)
+}
 
-	ps, err := listPackages(flag.Args())
+func vendor(names []string, andDeps bool) {
+	ps, err := listPackages(names)
 	if err != nil {
 		log.Fatalf("error encountered listing packages: %v", err)
 	}
@@ -80,38 +83,30 @@ func main() {
 			log.Printf("encountered package error: %v", p.Error.Err)
 			continue
 		}
-		if !isStandardOrLocal(p) {
+		if p.Standard {
+			continue
+		}
+		if isVendored(p) {
+			if !isLocal(p) {
+				// This is vendored in an external dep; report and skip
+				// add to report; skip
+			}
+			continue
+		}
+		if !isLocal(p) {
 			if err := copyPackage(p); err != nil {
 				log.Printf("error copying package %s: %v", p.ImportPath, err)
 				continue
 			}
 		}
-		deps, err := listPackages(p.Deps)
-		if err != nil {
-			log.Printf("error encountered listing packages: %v", err)
-		}
-		for _, d := range deps {
-			if d.Error != nil {
-				log.Printf("encountered package error: %v", d.Error.Err)
-				continue
-			}
-			if isStandardOrLocal(d) {
-				continue
-			}
-			if strings.Contains(d.ImportPath, "/vendor/") {
-				log.Printf("cowardly refusing to vendor a vendor: %s", d.ImportPath)
-				continue
-			}
-			if err := copyPackage(d); err != nil {
-				log.Printf("error copying package %s: %v", d.ImportPath, err)
-				continue
-			}
+		if andDeps {
+			vendor(p.Deps, false)
 		}
 	}
 }
 
-func isStandardOrLocal(p *Package) bool {
-	return p.Standard || isLocal(p)
+func isVendored(p *Package) bool {
+	return strings.Contains(p.ImportPath, "/vendor/")
 }
 
 var cwd string
