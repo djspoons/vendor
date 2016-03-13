@@ -78,15 +78,10 @@ func main() {
 var extVendoredDeps map[string]bool
 
 func noteExtVendoredDep(p *Package) {
-	i := strings.LastIndex(p.ImportPath, "/vendor/")
-	if i < 0 {
-		panic("asked to note ext vendored dep without /vendor/ " + p.ImportPath)
-	}
-	path := p.ImportPath[i+len("/vendor/"):]
-
 	if extVendoredDeps == nil {
 		extVendoredDeps = make(map[string]bool)
 	}
+	path := p.ImportPath
 	if extVendoredDeps[path] {
 		return
 	}
@@ -94,15 +89,10 @@ func noteExtVendoredDep(p *Package) {
 }
 
 func reportExtVendoredDep() {
-	printedHeader := false
 	for k, _ := range extVendoredDeps {
 		_, err := os.Stat(filepath.Join(getwd(), "vendor", k))
 		if err != nil {
 			if os.IsNotExist(err) {
-				if !printedHeader {
-					fmt.Fprintf(os.Stderr, "vendor-vendor report:\n")
-					printedHeader = true
-				}
 				fmt.Println(k)
 				continue
 			}
