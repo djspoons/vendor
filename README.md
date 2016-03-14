@@ -70,9 +70,3 @@ versions.
 The rollback function for Vendor is `git checkout -f -- vendor`. Vendor isn't
 careful because it assumes you are and can rollback any mistakes you may make
 while using vendor. Vendor doesn't make mistakes. :)
-
-## Goals
-
-* Be fast.
-* Get out of the way.
-* Do only what is asked of it.
