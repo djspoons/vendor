@@ -58,9 +58,9 @@ Vendor will not vendor anything that is already in the working tree.
 
 Vendor assumes that you would rather manage versions of dependencies yourself.
 
-   * Dependencies that vendor dependencies are merly giving you a suggestion.
+   * Dependencies that vendor dependencies are merely giving you a suggestion.
 
-Vendor will not attempt to be clever and make a deicision for you about what to
+Vendor will not attempt to be clever and make a decision for you about what to
 do when a dependency has vendored a dependency. Instead it reports and skips
 them. You can run `vendor` again to fill the gaps in by copying your GOPATH
 versions.
