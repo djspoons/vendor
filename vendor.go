@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -119,17 +120,22 @@ func noteManifest(p *Package) {
 }
 
 func reportManifest(name string) error {
+	var imps []string
+	for imp := range manifest {
+		imps = append(imps, imp)
+	}
+	sort.Strings(imps)
 	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		return err
 	}
 	w := bufio.NewWriter(f)
-	for ip, p := range manifest {
-		commit, err := commitHash(p.Dir)
+	for _, imp := range imps {
+		commit, err := commitHash(manifest[imp].Dir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: commit hash: %v", ip, err)
+			fmt.Fprintf(os.Stderr, "%s: commit hash: %v", imp, err)
 		}
-		fmt.Fprintf(w, "%s\t%s\n", commit, ip)
+		fmt.Fprintf(w, "%s\t%s\n", commit, imp)
 	}
 	return w.Flush()
 }
