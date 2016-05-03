@@ -133,7 +133,7 @@ func reportManifest(name string) error {
 	for _, imp := range imps {
 		commit, err := commitHash(manifest[imp].Dir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: commit hash: %v", imp, err)
+			log.Printf("%s: commit hash: %v", imp, err)
 		}
 		fmt.Fprintf(w, "%s\t%s\n", commit, imp)
 	}
