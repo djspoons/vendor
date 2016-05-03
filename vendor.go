@@ -132,10 +132,10 @@ func reportManifest(name string) error {
 	w := bufio.NewWriter(f)
 	for _, imp := range imps {
 		commit, err := commitHash(manifest[imp].Dir)
+		fmt.Fprintf(w, "%s\t%s\n", commit, imp)
 		if err != nil {
 			log.Printf("%s: commit hash: %v", imp, err)
 		}
-		fmt.Fprintf(w, "%s\t%s\n", commit, imp)
 	}
 	return w.Flush()
 }
