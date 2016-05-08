@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,7 +11,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+)
+
+var (
+	logfile = flag.String("log", "vendor-log", "file `name` for list of commit ids")
 )
 
 type Package struct {
@@ -71,8 +78,13 @@ func main() {
 	log.SetPrefix("vendor: ")
 
 	flag.Parse()
+
 	vendor(flag.Args(), true)
 	reportExtVendoredDep()
+	err := reportManifest(*logfile)
+	if err != nil {
+		log.Print(err)
+	}
 }
 
 var extVendoredDeps map[string]bool
@@ -101,6 +113,33 @@ func reportExtVendoredDep() {
 	}
 }
 
+var manifest = map[string]*Package{}
+
+func noteManifest(p *Package) {
+	manifest[p.ImportPath] = p
+}
+
+func reportManifest(name string) error {
+	var imps []string
+	for imp := range manifest {
+		imps = append(imps, imp)
+	}
+	sort.Strings(imps)
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+	w := bufio.NewWriter(f)
+	for _, imp := range imps {
+		commit, err := commitHash(manifest[imp].Dir)
+		fmt.Fprintf(w, "%s\t%s\n", commit, imp)
+		if err != nil {
+			log.Printf("%s: commit hash: %v", imp, err)
+		}
+	}
+	return w.Flush()
+}
+
 func vendor(names []string, andDeps bool) {
 	ps, err := listPackages(names)
 	if err != nil {
@@ -125,6 +164,7 @@ func vendor(names []string, andDeps bool) {
 				log.Printf("error copying package %s: %v", p.ImportPath, err)
 				continue
 			}
+			noteManifest(p)
 		}
 		if andDeps {
 			vendor(p.Deps, false)
@@ -228,6 +268,28 @@ func copyFile(dstpath, srcpath string) error {
 	defer src.Close()
 	_, err = io.Copy(dst, src)
 	return err
+}
+
+func commitHash(dir string) (string, error) {
+	// TODO: work with hg, bzr
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "unknown", err
+	}
+	commit := string(bytes.TrimSpace(out))
+	if !isClean(dir) {
+		commit += " (dirty)"
+	}
+	return commit, nil
+}
+
+func isClean(dir string) bool {
+	cmd := exec.Command("git", "diff-index", "--quiet", "HEAD")
+	cmd.Dir = dir
+	return cmd.Run() == nil
 }
 
 func flatten(sss ...[]string) (ss []string) {
