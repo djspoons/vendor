@@ -167,7 +167,7 @@ func vendor(names []string, andDeps bool) {
 			noteManifest(p)
 		}
 		if andDeps {
-			vendor(p.Deps, false)
+			vendor(append(p.Deps, p.TestImports...), false)
 		}
 	}
 }
