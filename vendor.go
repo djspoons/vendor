@@ -12,11 +12,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 var (
-	logfile = flag.String("log", "vendor-log", "file `name` for list of commit ids")
+	logfile  = flag.String("log", "vendor-log", "file `name` for list of commit ids")
+	filemode = flag.String("mode", "", "if set, file mode for copied files as an octal integer")
 )
 
 type Package struct {
@@ -79,7 +81,16 @@ func main() {
 
 	flag.Parse()
 
-	vendor(flag.Args(), true)
+	var mode os.FileMode
+	if len(*filemode) > 0 {
+		filemode, err := strconv.ParseInt(*filemode, 8, 32)
+		if err != nil {
+			log.Fatal(err)
+		}
+		mode = os.FileMode(filemode)
+	}
+
+	vendor(flag.Args(), true, mode)
 	reportExtVendoredDep()
 	err := reportManifest(*logfile)
 	if err != nil {
@@ -140,7 +151,7 @@ func reportManifest(name string) error {
 	return w.Flush()
 }
 
-func vendor(names []string, andDeps bool) {
+func vendor(names []string, andDeps bool, filemode os.FileMode) {
 	ps, err := listPackages(names)
 	if err != nil {
 		log.Fatalf("error encountered listing packages: %v", err)
@@ -160,14 +171,14 @@ func vendor(names []string, andDeps bool) {
 			continue
 		}
 		if !isLocal(p) {
-			if err := copyPackage(p); err != nil {
+			if err := copyPackage(p, filemode); err != nil {
 				log.Printf("error copying package %s: %v", p.ImportPath, err)
 				continue
 			}
 			noteManifest(p)
 		}
 		if andDeps {
-			vendor(p.Deps, false)
+			vendor(p.Deps, false, filemode)
 		}
 	}
 }
@@ -224,7 +235,7 @@ func listPackages(names []string) ([]*Package, error) {
 	return ps, nil
 }
 
-func copyPackage(p *Package) error {
+func copyPackage(p *Package, filemode os.FileMode) error {
 	vdir := filepath.Join("vendor", p.ImportPath)
 	if err := os.MkdirAll(vdir, 0755); err != nil {
 		return err
@@ -248,6 +259,7 @@ func copyPackage(p *Package) error {
 		if err := copyFile(
 			filepath.Join(vdir, fname),
 			filepath.Join(p.Dir, fname),
+			filemode,
 		); err != nil {
 			return err
 		}
@@ -255,7 +267,13 @@ func copyPackage(p *Package) error {
 	return nil
 }
 
-func copyFile(dstpath, srcpath string) error {
+func copyFile(dstpath, srcpath string, filemode os.FileMode) error {
+	// Since we might have made files read-only on a previous run, try to
+	// remove them before calling Create.
+	err := os.Remove(dstpath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	dst, err := os.Create(dstpath)
 	if err != nil {
 		return err
@@ -264,6 +282,14 @@ func copyFile(dstpath, srcpath string) error {
 	src, err := os.Open(srcpath)
 	if err != nil {
 		return err
+	}
+	if filemode > 0 {
+		// chmod after close
+		defer func() {
+			if err := os.Chmod(dstpath, filemode); err != nil {
+				log.Print(err)
+			}
+		}()
 	}
 	defer src.Close()
 	_, err = io.Copy(dst, src)
