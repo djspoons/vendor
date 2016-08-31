@@ -12,13 +12,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 )
 
 var (
-	logfile  = flag.String("log", "vendor-log", "file `name` for list of commit ids")
-	filemode = flag.String("mode", "", "if set, file mode for copied files as an octal integer")
+	logfile = flag.String("log", "vendor-log", "file `name` for list of commit ids")
 )
 
 type Package struct {
@@ -81,18 +79,38 @@ func main() {
 
 	flag.Parse()
 
-	var mode os.FileMode
-	if len(*filemode) > 0 {
-		filemode, err := strconv.ParseInt(*filemode, 8, 32)
-		if err != nil {
-			log.Fatal(err)
+	copied := false
+	filemode := os.FileMode(0644)
+	info, err := os.Stat("vendor")
+	// If the 'vendor' directory doesn't exist, make it.  If it does
+	// exist, copy the read-write bits from its mode.
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Fatalf("error calling stat on vendor dir: %v", err)
 		}
-		mode = os.FileMode(filemode)
+		if err = os.Mkdir("vendor", 0755); err != nil {
+			log.Fatalf("error creating vendor dir: %v", err)
+		}
+		filemode = os.FileMode(0644)
+		defer func() {
+			if !copied {
+				// Remove the newly created dir if we didn't need it.
+				os.Remove("vendor")
+			}
+		}()
+	} else {
+		// Copy the permission bits, except for the execute ones.
+		filemode = info.Mode() & os.ModePerm &^ 0111
+		// Revert to its original mode after copying...
+		defer os.Chmod("vendor", info.Mode())
+		// ...but temporarily make 'vendor' writable.
+		os.Chmod("vendor", 0755)
 	}
 
-	vendor(flag.Args(), true, mode)
+	copied = vendor(flag.Args(), true, filemode)
+
 	reportExtVendoredDep()
-	err := reportManifest(*logfile)
+	err = reportManifest(*logfile)
 	if err != nil {
 		log.Print(err)
 	}
@@ -151,11 +169,12 @@ func reportManifest(name string) error {
 	return w.Flush()
 }
 
-func vendor(names []string, andDeps bool, filemode os.FileMode) {
+func vendor(names []string, andDeps bool, filemode os.FileMode) bool {
 	ps, err := listPackages(names)
 	if err != nil {
 		log.Fatalf("error encountered listing packages: %v", err)
 	}
+	copied := false
 	for _, p := range ps {
 		if p.Error != nil {
 			log.Printf("encountered package error: %v", p.Error.Err)
@@ -176,11 +195,13 @@ func vendor(names []string, andDeps bool, filemode os.FileMode) {
 				continue
 			}
 			noteManifest(p)
+			copied = true
 		}
 		if andDeps {
-			vendor(p.Deps, false, filemode)
+			copied = vendor(p.Deps, false, filemode) || copied
 		}
 	}
+	return copied
 }
 
 func isVendored(p *Package) bool {
@@ -235,8 +256,11 @@ func listPackages(names []string) ([]*Package, error) {
 	return ps, nil
 }
 
+// copyPackage copies files from p to the vendor directory. Files will be
+// created with the given mode.
 func copyPackage(p *Package, filemode os.FileMode) error {
 	vdir := filepath.Join("vendor", p.ImportPath)
+	// Make directories with a permissive mode.
 	if err := os.MkdirAll(vdir, 0755); err != nil {
 		return err
 	}
@@ -283,14 +307,12 @@ func copyFile(dstpath, srcpath string, filemode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	if filemode > 0 {
-		// chmod after close
-		defer func() {
-			if err := os.Chmod(dstpath, filemode); err != nil {
-				log.Print(err)
-			}
-		}()
-	}
+	// chmod after close
+	defer func() {
+		if err := os.Chmod(dstpath, filemode); err != nil {
+			log.Print(err)
+		}
+	}()
 	defer src.Close()
 	_, err = io.Copy(dst, src)
 	return err
