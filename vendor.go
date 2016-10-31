@@ -198,7 +198,7 @@ func vendor(names []string, andDeps bool, filemode os.FileMode) bool {
 			copied = true
 		}
 		if andDeps {
-			copied = vendor(p.Deps, false, filemode) || copied
+			copied = vendor(append(p.Deps, p.TestImports...), false, filemode) || copied
 		}
 	}
 	return copied
