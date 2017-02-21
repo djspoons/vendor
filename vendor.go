@@ -197,8 +197,14 @@ func vendor(names []string, andDeps bool, filemode os.FileMode) bool {
 			noteManifest(p)
 			copied = true
 		}
+
 		if andDeps {
-			copied = vendor(append(p.Deps, p.TestImports...), false, filemode) || copied
+			if len(p.Deps) > 0 {
+				copied = vendor(p.Deps, false, filemode) || copied
+			}
+			if len(p.TestImports) > 0 {
+				copied = vendor(p.TestImports, true, filemode) || copied
+			}
 		}
 	}
 	return copied
